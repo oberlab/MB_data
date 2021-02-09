@@ -1,0 +1,98 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+
+## Load Libraries and functions
+```{r}
+source("plot_fun.R")
+```
+
+
+## Load data
+```{r}
+data_folder = "/home/alex/Obercloud/Projekt_Datenanalyse/"
+
+data <- read.csv(paste0(data_folder, "spt_herkunft_tagessummen_view.csv"))
+```
+
+## Prepare location data
+```{r}
+#Get location names
+unique(data$poi)
+```
+
+```{r}
+#Get PLZ data
+PLZ_reference <- read.csv("src/plz_ref.csv")
+MB_gemeinden <- PLZ_reference$Gemeinde
+
+#Filter data for Gemeinden in LK MB
+filtered_data <- data[data$poi %in% MB_gemeinden,]
+filtered_data <- filtered_data[, c("poi", "tagessumme_kalibriert")]
+
+summary <- aggregate(filtered_data$tagessumme_kalibriert, by=list(Gemeinde=filtered_data$poi), FUN=sum)
+colnames(summary) <- c("Gemeinde", "value")
+
+summary <- merge(summary, PLZ_reference[, c("Gemeinde", "einwohner")], by.y="Gemeinde")
+```
+
+## Plot
+
+```{r fig.width = 12, fig.height = 12, warning=FALSE}
+library(gpclib)
+library(maptools)
+library(tidyverse)
+
+set_font <- "Roboto Mono" 
+
+landkreis_mb_shape <- initialize_polygons()
+gemeinden_in_mb <- landkreis_mb_shape[landkreis_mb_shape$NAME_2=='Miesbach',]
+location_data <- summary
+    
+oberlab_palette <- c("#00a4c4", "#3db8c1", "#fabb3a","#c7326c")
+normal_palette <- c("#339933", "#339933", "#fabb3a","#ff0000")
+    
+used_palette <- oberlab_palette
+    
+gemeinden_fortification <- fortify(gemeinden_in_mb, region = "NAME_3")
+faelle_labels <- aggregate(cbind(long,lat) ~ id, data = gemeinden_fortification, FUN = mean)
+faelle_labels <- merge(location_data[,c("Gemeinde","value")], faelle_labels, by.x="Gemeinde", by.y="id", all=T)
+faelle_labels <- mutate(faelle_labels,label=paste(faelle_labels$Gemeinde,"\n", faelle_labels$value))
+# Cols: Gemeinde / value / long / lat / label
+    
+einfache_lkr_map <- fortify(gemeinden_in_mb, region = "NAME_3")
+einfache_lkr_map <- merge(einfache_lkr_map,location_data[,c("Gemeinde","value","einwohner")],by.x="id",by.y="Gemeinde")
+einfache_lkr_map <- mutate(einfache_lkr_map, ratio=einfache_lkr_map$value/einfache_lkr_map$einwohner*100)
+# Cols: id / long / lat / order / hole / piece / group / value / ratio
+    
+einfache_lkr_ggplot_map <- ggplot(einfache_lkr_map) + 
+  geom_polygon(aes(x = long, y = lat, group = group, fill=value), colour = "white") +
+  labs(title = "",
+        subtitle = "Lizenz: CC-BY-SA, FabLab Oberland e.V.") +
+  theme_void()  +
+  theme(legend.position = c(0.5,0),
+        legend.direction = "horizontal",
+        legend.key.width=unit(2,"cm"),
+        legend.text = element_text(size = rel(1.0), color = "black", family = set_font),
+        legend.title = element_text(size = rel(1.0), color = "black", family = set_font),
+        legend.text.align = 0,
+        legend.title.align = 0,
+        plot.title = element_text(size = 12*1.2, color = "#c7326c", family = set_font, vjust = 5),  
+        plot.margin = unit(c(2,10,4.5,0.1) , "lines"),
+        plot.caption = element_text(size = 12, vjust = 5, hjust = 1))
+    
+einfache_lkr_ggplot_map <- einfache_lkr_ggplot_map + geom_text(data = faelle_labels, aes(x=long, y=lat, label=label), fontface = "bold", fontfamily = "Roboto Mono")
+  
+    
+einfache_lkr_ggplot_map <- einfache_lkr_ggplot_map + scale_fill_distiller(name = "Tages-\nPendler", palette = "Blues", direction = +1)
+
+  #einfache_lkr_ggplot_map <- einfache_lkr_ggplot_map + 
+#  scale_fill_gradientn(name="Relative Betroffenheit nach\nGemeinde (in % der   Einwohner)",
+#                       colours = used_palette, limits=c(0,maxFaelleThreshold),oob=squish)
+
+
+show(einfache_lkr_ggplot_map)
+```
