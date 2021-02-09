@@ -25,7 +25,6 @@ data <- read.csv(paste0(data_folder, "spt_herkunft_tagessummen_view.csv"))
 ## Curate data
 ```{r}
 #data$datum <- as.Date(data$datum, format = "%Y-%m-%d")
-recorded_days <- length(unique(data$datum))
 
 ```
 
@@ -43,7 +42,12 @@ MB_gemeinden <- PLZ_reference$Gemeinde
 
 #Filter data for Gemeinden in LK MB
 filtered_data <- data[data$poi %in% MB_gemeinden,]
+filtered_data <- filtered_data[filtered_data$personenkategorie == "tagespendler",]
+
+recorded_days <- length(unique(filtered_data$datum))
+
 filtered_data <- filtered_data[, c("poi", "tagessumme_kalibriert")]
+
 
 summary <- aggregate(filtered_data$tagessumme_kalibriert, by=list(Gemeinde=filtered_data$poi), FUN=sum)
 colnames(summary) <- c("Gemeinde", "value")
