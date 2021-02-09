@@ -7,6 +7,10 @@ output:
 
 ## Load Libraries and functions
 ```{r}
+library(gpclib)
+library(maptools)
+library(tidyverse)
+
 source("plot_fun.R")
 ```
 
@@ -17,6 +21,14 @@ data_folder = "/home/alex/Obercloud/Projekt_Datenanalyse/"
 
 data <- read.csv(paste0(data_folder, "spt_herkunft_tagessummen_view.csv"))
 ```
+
+## Curate data
+```{r}
+#data$datum <- as.Date(data$datum, format = "%Y-%m-%d")
+recorded_days <- length(unique(data$datum))
+
+```
+
 
 ## Prepare location data
 ```{r}
@@ -37,15 +49,12 @@ summary <- aggregate(filtered_data$tagessumme_kalibriert, by=list(Gemeinde=filte
 colnames(summary) <- c("Gemeinde", "value")
 
 summary <- merge(summary, PLZ_reference[, c("Gemeinde", "einwohner")], by.y="Gemeinde")
+summary <- mutate(summary, per_day=(summary$value/recorded_days))
 ```
 
 ## Plot
 
 ```{r fig.width = 12, fig.height = 12, warning=FALSE}
-library(gpclib)
-library(maptools)
-library(tidyverse)
-
 set_font <- "Roboto Mono" 
 
 landkreis_mb_shape <- initialize_polygons()
@@ -59,18 +68,19 @@ used_palette <- oberlab_palette
     
 gemeinden_fortification <- fortify(gemeinden_in_mb, region = "NAME_3")
 faelle_labels <- aggregate(cbind(long,lat) ~ id, data = gemeinden_fortification, FUN = mean)
-faelle_labels <- merge(location_data[,c("Gemeinde","value")], faelle_labels, by.x="Gemeinde", by.y="id", all=T)
-faelle_labels <- mutate(faelle_labels,label=paste(faelle_labels$Gemeinde,"\n", faelle_labels$value))
+faelle_labels <- merge(location_data[,c("Gemeinde","per_day", "einwohner")], faelle_labels, by.x="Gemeinde", by.y="id", all=T)
+faelle_labels <- mutate(faelle_labels, ratio=faelle_labels$per_day/faelle_labels$einwohner*100)
+faelle_labels <- mutate(faelle_labels,label=paste(faelle_labels$Gemeinde,"\n", round(faelle_labels$ratio,digits = 0)))
 # Cols: Gemeinde / value / long / lat / label
     
 einfache_lkr_map <- fortify(gemeinden_in_mb, region = "NAME_3")
-einfache_lkr_map <- merge(einfache_lkr_map,location_data[,c("Gemeinde","value","einwohner")],by.x="id",by.y="Gemeinde")
-einfache_lkr_map <- mutate(einfache_lkr_map, ratio=einfache_lkr_map$value/einfache_lkr_map$einwohner*100)
+einfache_lkr_map <- merge(einfache_lkr_map,location_data[,c("Gemeinde","per_day","einwohner")],by.x="id",by.y="Gemeinde")
+einfache_lkr_map <- mutate(einfache_lkr_map, ratio=einfache_lkr_map$per_day/einfache_lkr_map$einwohner*100)
 # Cols: id / long / lat / order / hole / piece / group / value / ratio
     
 einfache_lkr_ggplot_map <- ggplot(einfache_lkr_map) + 
-  geom_polygon(aes(x = long, y = lat, group = group, fill=value), colour = "white") +
-  labs(title = "",
+  geom_polygon(aes(x = long, y = lat, group = group, fill=ratio), colour = "white") +
+  labs(title = "Tagespendler relativ zur Einwohnerzahl",
         subtitle = "Lizenz: CC-BY-SA, FabLab Oberland e.V.") +
   theme_void()  +
   theme(legend.position = c(0.5,0),
@@ -87,7 +97,7 @@ einfache_lkr_ggplot_map <- ggplot(einfache_lkr_map) +
 einfache_lkr_ggplot_map <- einfache_lkr_ggplot_map + geom_text(data = faelle_labels, aes(x=long, y=lat, label=label), fontface = "bold", fontfamily = "Roboto Mono")
   
     
-einfache_lkr_ggplot_map <- einfache_lkr_ggplot_map + scale_fill_distiller(name = "Tages-\nPendler", palette = "Blues", direction = +1)
+einfache_lkr_ggplot_map <- einfache_lkr_ggplot_map + scale_fill_distiller(name = "Faktor Tagespendler \nzu Einwohnern", palette = "Blues", direction = +1)
 
   #einfache_lkr_ggplot_map <- einfache_lkr_ggplot_map + 
 #  scale_fill_gradientn(name="Relative Betroffenheit nach\nGemeinde (in % der   Einwohner)",
